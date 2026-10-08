@@ -1,2 +1,2 @@
 # shipping-booking-service
-Production-ready Spring Boot service for shipment booking management, API integration, validation, monitoring, and deployment workflows.
+Production-ready shipping booking service demonstrating backend engineering, business workflow implementation, API design, operational monitoring, and deployment readiness.
