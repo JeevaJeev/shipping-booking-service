@@ -1,0 +1,101 @@
+name: Shipping Booking Service - PRD CI/CD
+
+on:
+  push:
+    branches:
+      - prd
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  JAVA_VERSION: '17'
+  APP_NAME: shipping-booking-service
+  ENV_NAME: prd
+  APP_PORT: '8083'
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/shipping-booking-service
+
+jobs:
+  build-test-deploy:
+    name: Build, test and deploy to PRD
+    runs-on: ubuntu-latest
+    environment: prd
+
+    steps:
+      - name: Checkout latest code from prd branch
+        uses: actions/checkout@v4
+        with:
+          ref: prd
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Run Maven tests
+        run: mvn -B clean test
+
+      - name: Package application
+        run: mvn -B package -DskipTests
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:prd .
+          docker tag $IMAGE_NAME:prd $IMAGE_NAME:prd-${{ github.sha }}
+
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_NAME:prd
+          docker push $IMAGE_NAME:prd-${{ github.sha }}
+
+      - name: Deploy to PRD server
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.PRD_HOST }}
+          username: ${{ secrets.PRD_SSH_USER }}
+          key: ${{ secrets.PRD_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            mkdir -p /opt/${{ env.APP_NAME }}/config
+            cat > /opt/${{ env.APP_NAME }}/config/application-prd.properties <<EOF
+            spring.application.name=${{ env.APP_NAME }}
+            server.port=${{ env.APP_PORT }}
+            spring.profiles.active=prd
+            spring.datasource.url=${{ secrets.PRD_DB_URL }}
+            spring.datasource.username=${{ secrets.PRD_DB_USERNAME }}
+            spring.datasource.password=${{ secrets.PRD_DB_PASSWORD }}
+            spring.jpa.hibernate.ddl-auto=update
+            spring.jpa.show-sql=false
+            management.endpoints.web.exposure.include=health,info,metrics
+            management.endpoint.health.show-details=always
+            EOF
+
+            docker pull $IMAGE_NAME:prd
+            docker stop ${{ env.APP_NAME }}-prd || true
+            docker rm ${{ env.APP_NAME }}-prd || true
+
+            docker run -d \
+              --name ${{ env.APP_NAME }}-prd \
+              --restart unless-stopped \
+              -p ${{ env.APP_PORT }}:${{ env.APP_PORT }} \
+              -e SPRING_PROFILES_ACTIVE=prd \
+              -e SERVER_PORT=${{ env.APP_PORT }} \
+              -e SPRING_DATASOURCE_URL='${{ secrets.PRD_DB_URL }}' \
+              -e SPRING_DATASOURCE_USERNAME='${{ secrets.PRD_DB_USERNAME }}' \
+              -e SPRING_DATASOURCE_PASSWORD='${{ secrets.PRD_DB_PASSWORD }}' \
+              $IMAGE_NAME:prd
+
+      - name: Smoke test PRD health endpoint
+        run: curl -fsS "http://${{ secrets.PRD_HOST }}:${{ env.APP_PORT }}/actuator/health" | grep -q 'UP'

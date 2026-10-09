@@ -2,31 +2,111 @@ pipeline {
 
     agent any
 
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['DEV', 'SIT', 'STG', 'PRD'],
+            description: 'Select deployment environment'
+        )
+    }
+
+    environment {
+        APP_NAME = "shipping-booking-service"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
+                echo "Checking out source code from GitHub"
                 checkout scm
             }
         }
 
         stage('Build') {
             steps {
+                echo "Building application"
                 bat 'mvn clean compile'
             }
         }
 
         stage('Test') {
             steps {
+                echo "Running tests"
                 bat 'mvn test'
             }
         }
 
         stage('Package') {
             steps {
+                echo "Packaging application"
                 bat 'mvn package'
             }
         }
+
+        stage('Deploy') {
+
+            steps {
+
+                script {
+
+                    if(params.ENVIRONMENT == 'DEV') {
+
+                        echo "Deploying DEV"
+
+                        bat '''
+                        java -jar target/shipping-booking-service.jar ^
+                        --spring.profiles.active=dev
+                        '''
+
+                    }
+
+                    if(params.ENVIRONMENT == 'SIT') {
+
+                        echo "Deploying SIT"
+
+                        bat '''
+                        java -jar target/shipping-booking-service.jar ^
+                        --spring.profiles.active=sit
+                        '''
+
+                    }
+
+                    if(params.ENVIRONMENT == 'STG') {
+
+                        echo "Deploying STG"
+
+                        bat '''
+                        java -jar target/shipping-booking-service.jar ^
+                        --spring.profiles.active=stg
+                        '''
+
+                    }
+
+                    if(params.ENVIRONMENT == 'PRD') {
+
+                        echo "Deploying PRD"
+
+                        bat '''
+                        java -jar target/shipping-booking-service.jar ^
+                        --spring.profiles.active=prd
+                        '''
+
+                    }
+
+                }
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo "Deployment Successful"
+        }
+
+        failure {
+            echo "Deployment Failed"
+        }
     }
 }
-``
