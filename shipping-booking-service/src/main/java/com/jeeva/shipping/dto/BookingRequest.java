@@ -7,5 +7,6 @@ public record BookingRequest(
         @NotBlank @Size(min = 3, max = 5) String originPort,
         @NotBlank @Size(min = 3, max = 5) String destinationPort,
         @NotBlank String vesselName,
-        @NotNull @Min(1) @Max(100) Integer containerCount) {
+        @NotNull @Min(1) @Max(100) Integer containerCount
+) {
 }
